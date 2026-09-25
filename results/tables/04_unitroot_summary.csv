@@ -1,0 +1,22 @@
+"","series","test","statistic","cv_5pct","null","reject_5pct"
+"1","y","ADF diff(y), drift (tau2)",-14.8144099705278,-2.86,"2 unit roots",TRUE
+"2","y","ADF y, trend (tau3)",2.02106907578633,-3.41,"1 unit root",FALSE
+"3","y","ADF y, drift (tau2)",4.21497437375561,-2.86,"1 unit root",FALSE
+"4","y","KPSS y (tau)",9.52357447994171,0.146,"trend stationary",TRUE
+"5","y","KPSS diff(y) (mu)",1.08728143860988,0.463,"difference is level stationary",TRUE
+"6","y","DF-GLS y, trend, 4 lags",0.989434133392282,-2.89,"1 unit root",FALSE
+"7","y","Zivot-Andrews y, both",-3.9178570553363,-5.08,"1 unit root, no break (H1: stationary + 1 break)",FALSE
+"8","log(y)","ADF diff(log(y)), drift (tau2)",-14.7184039242524,-2.86,"2 unit roots",TRUE
+"9","log(y)","ADF log(y), trend (tau3)",-2.57020754067391,-3.41,"1 unit root",FALSE
+"10","log(y)","ADF log(y), drift (tau2)",0.57773915060611,-2.86,"1 unit root",FALSE
+"11","log(y)","KPSS log(y) (tau)",9.12956891063296,0.146,"trend stationary",TRUE
+"12","log(y)","KPSS diff(log(y)) (mu)",0.216031209294554,0.463,"difference is level stationary",FALSE
+"13","log(y)","DF-GLS log(y), trend, 4 lags",-1.2051812163598,-2.89,"1 unit root",FALSE
+"14","log(y)","Zivot-Andrews log(y), both",-4.80580427229321,-5.08,"1 unit root, no break (H1: stationary + 1 break)",FALSE
+"15","r","ADF diff(r), drift (tau2)",-28.0675147727803,-2.86,"2 unit roots",TRUE
+"16","r","ADF r, trend (tau3)",-14.8082612804824,-3.41,"1 unit root",TRUE
+"17","r","ADF r, drift (tau2)",-14.7184039242524,-2.86,"1 unit root",TRUE
+"18","r","KPSS r (mu)",0.216031209294554,0.463,"level stationary",FALSE
+"19","r","KPSS diff(r) (mu)",0.00120696675483564,0.463,"difference is level stationary",FALSE
+"20","r","DF-GLS r, constant, 4 lags",-12.5625138909039,-1.94,"1 unit root",TRUE
+"21","r","Zivot-Andrews r, intercept",-24.1870147378023,-4.8,"1 unit root, no break (H1: stationary + 1 break)",TRUE

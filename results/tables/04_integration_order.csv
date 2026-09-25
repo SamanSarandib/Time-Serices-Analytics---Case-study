@@ -1,0 +1,4 @@
+"","series","pantula_step1_reject","pantula_step2_reject","order_adf","kpss_level_rejects","kpss_diff_rejects","kpss_agrees"
+"1","y",TRUE,FALSE,"I(1)",TRUE,TRUE,FALSE
+"2","log(y)",TRUE,FALSE,"I(1)",TRUE,FALSE,TRUE
+"3","r",TRUE,TRUE,"I(0)",FALSE,FALSE,TRUE

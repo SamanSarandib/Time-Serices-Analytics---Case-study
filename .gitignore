@@ -1,0 +1,12 @@
+# R session files
+.RData
+.Rhistory
+.Rproj.user/
+
+# rebuilt on every run
+results/cache/
+results/parts/
+results/log/
+results/case3_results.rds
+results/headline.csv
+results/model_output.txt

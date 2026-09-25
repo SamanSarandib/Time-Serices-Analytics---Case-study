@@ -1,0 +1,175 @@
+Case 3: Modeling Stock Prices, Returns and Volatility
+
+                                                    Ines Wilms
+
+In this case you will explore financial time series, from modeling stock prices and returns using ARIMA
+models to modeling their volatility using GARCH and HAR models. You will use daily stock price data of
+your own choosing to construct price, return and volatility time series, and you will extend your analysis
+to a multivariate spillover setting across several stocks. You will learn (i) how to model price and return
+series using ARIMA models, (ii) what GARCH models are, how to estimate them and how they are useful
+for modeling conditional volatility in finance, (iii) how to construct realized variance and range measures,
+(iv) what HAR models are, how they relate to and differ from GARCH models, and how to estimate them,
+(v) how to extend your univariate analysis to a multivariate one to model spillovers across stocks.
+
+General Guidelines. The case study is deliberately formulated in a rather "open" way as you will have
+to "learn by doing" how to solve the tasks at hand. This document provides you with initial pointers for
+additional reading material (academic papers, software papers, ...) that may be relevant. You may resort
+to any other auxiliary material that helps you to solve this case. When presenting your case study in class,
+make sure to
+
+    · Prepare compact "lecture material" (for instance slides) when you need to introduce new time series
+       concepts, models, estimators, ... to your fellow students.
+
+    · Prepare a careful analysis in R using readable scripts and intuitive figures, ... such that you can walk
+       your fellow students through your software implementation. While you can make use of any auxiliary
+       material, you should be able to explain all the code you generated in R (motivate use of certain packages
+       and functions, know how the functions work, what arguments in the functions mean, ...)! You should
+       also spend sufficient time on the interpretation of the output and the results. Make sure that you R
+       scripts are in a format that allows for easy replication.
+
+    · Be transparent about, and take full responsibility for, any possible use of external tools, including
+       generative AI. You may use such tools to support your work, but you must be able to explain, motivate
+       and defend every (methodological) choice, every line of R code and every result live during the in-
+       class presentations and Q&A. Answers that reveal a lack of genuine understanding of the underlying
+       methodology, regardless of how they were produced, will be graded accordingly. Each team will also
+       upload a reflection document on GenAI usage, see Canvas for more details.
+
+                                                                      1
+Data. The data come from Yahoo Finance, a widely-used, publicly available source of historical stock price
+data, accessible at https://finance.yahoo.com or programmatically in R via packages such as quantmod
+(Ryan and Ulrich, 2025). Choose a stock of your own choosing that is listed on Yahoo Finance and for which
+sufficient historical daily price data are available. Motivate your choice. Collect daily price data for your
+chosen stock. Specifically, the following variables are typically available
+
+    · Date: the trading date
+    · Open, High, Low, Close: the opening, highest, lowest and closing price on the trading day
+    · Adjusted Close: the closing price adjusted for dividends and stock splits
+    · Volume: the number of shares traded on the trading day.
+
+Make sure that your time series is sufficiently long: several of the models you will estimate later in this case
+require a substantial number of observations to be estimated reliably and to cover at least one period of
+financial crisis. Motivate your choice of sample length.
+
+Data Exploration. Start by importing your data into RStudio and visually exploring the price data.
+You should familiarize your fellow students with the data and its typical features. Think about discussing
+trends, stationarity, volatility clustering, structural breaks (e.g. financial crises), and other typical features
+you notice in the price series.
+
+Unit Root Tests for the Price Series. To determine whether your stock price series is stationary you
+can use unit root tests. Perform an appropriate unit root test, using the Pantula principle, on the stock
+price series to determine its order of integration. Which unit root test do you use? What do you conclude?
+
+ARIMA Models for the Price Series. Model your price time series using ARIMA models, that you
+know from the lecture. Explore two routes: (i) specify yourself appropriate ARIMA models that seems suited
+for the price data by relying on tools such as the correlogram. (ii) resort to automatic searches across the
+whole class of ARIMA models to select an appropriate model in a data-driven way, see for instance Hyndman
+and Khandakar (2008). In both situations: motivate how you made your choices, make sure to explain to
+your fellow students how the approaches work, and present your estimated models! Also, be precise on which
+R packages and functions you use to estimate the ARIMA models, motivate your choice, and introduce your
+fellow students to your analysis in R.
+
+From Prices to Returns. Prices are typically not the object of interest in financial time series modeling:
+it is more common to work with returns. Construct the return series from your price series (e.g. log returns
+or simple returns; motivate your choice). Discuss basic properties of your return series: is it stationary?
+Perform an appropriate unit root test and compare your conclusion to the one you obtained for the price
+series. Model your return time series using ARIMA models. What do you find? How does the fit of your
+ARIMA model for the returns compare to the fit for the prices, and how do you explain this?
+
+                                                                      2
+Modeling Volatility: GARCH Models. Return series are hard to model and forecast using the mean-
+based ARIMA framework: financial returns are typically close to unpredictable in their conditional mean.
+Nonetheless, they often display pronounced volatility clustering (periods of high volatility followed by more
+high volatility, and vice versa). This suggests that, rather than modeling the conditional mean of the returns,
+we may want to shift focus to modeling their conditional variance, i.e. their volatility, instead.
+
+    Explore the class of Generalized Autoregressive Conditional Heteroskedasticity (GARCH) models to this
+end, see Bollerslev (1986) or Tsay (2010) for a textbook introduction. First, introduce your fellow students
+to (G)ARCH models: which stylized facts of financial returns do they capture, and how do they differ
+conceptually from the ARIMA models you used above? Second, find an appropriate R package and estimate
+appropriate (G)ARCH models for your return series. Present and interpret your estimated models.
+
+HAR Models for Realized Volatility. GARCH models are not the only way to model conditional
+volatility. A recent and attractive alternative is the class of Heterogeneous Autoregressive (HAR) models for
+realized volatility, see Corsi (2009), building on the realized volatility literature of Andersen et al. (2003).
+
+    First, explain to your fellow students the concept of realized variance, and explain how HAR models
+differ from GARCH models: how do the two classes of models treat volatility, what data do they require,
+and what does "heterogeneous" refer to in HAR? Second, if you would like to estimate a HAR model for
+your stock, what data do you require?
+
+Bridging the Data Gap: Realized Range. Standard HAR models are built using data that you likely
+do not have access to for your chosen stock. We will proceed in two ways to bridge this gap. First, consider
+computing the daily realized range instead of the daily realized variance, see Christensen et al. (2009).
+
+    What is the realized range, and how does it relate to the realized variance? What additional data do
+you need to collect to compute it for your stock (think back to the variables you already collected in the
+data section)? Compute the realized range for your data, and estimate a HAR-style model for your realized
+range series. Discuss and, informally, compare your results to those of your GARCH model.
+
+Bridging the Data Gap: Monthly Realized Variance from Daily Data. Second, instead of using
+intraday data to compute a daily realized variance, we can use daily data to compute a lower-frequency,
+monthly realized variance, in an analogous fashion to how the daily realized variance is computed from
+intraday returns, see for instance Corsi (2009).
+
+    Explain to your fellow students how you would construct a monthly realized variance measure from your
+daily return data. Compute this monthly realized variance for your data, and estimate a HAR-style model
+for it. Discuss your results.
+
+                As of here, collect additional stock price series and extend your favorite
+                                      univariate model to a multivariate setting.
+
+                                                                      3
+A Multivariate Extension: Modeling Spillovers. So far, you have considered only a single stock price
+series, and explored several univariate models for its price, return and volatility dynamics. Choose your
+favorite univariate model, for your favorite time series (price, return, or volatility) among those you have
+used so far, and explore a multivariate extension of it. Multivariate models allow you to explore spillovers
+between different stock series, see for instance Diebold and Yilmaz (2015), while Hecq et al. (2023), or
+Diebold and Yilmaz (2012) may serve as sources of inspiration for which multivariate models to use.
+
+    Collect additional stock series (for instance further companies in the same sector, or the broader market).
+The goal is to model spillovers between your series. Which multivariate model do you consider, and why?
+Explain the model to your fellow students. Find a suitable R implementation, and discuss your results.
+
+Subsample Analysis: Crisis versus Non-crisis Periods. First, perform the spillover analysis of the
+previous section for your whole sample. However, your sample likely spans one or more periods of financial
+crisis. Perform a subsample analysis: split your sample into a crisis and non-crisis period, motivating your
+choice of split. How do the results of your spillover analysis differ between the crisis and the non-crisis
+period?
+
+Final Recommendations. Conclude with your lessons learned, tips & tricks and final recommendations
+for this case.
+
+References
+
+Andersen, T. G.; Bollerslev, T.; Diebold, F. X. and Labys, P. (2003), "Modeling and forecasting realized
+   volatility," Econometrica, 71, 579-625.
+
+Bollerslev, T. (1986), "Generalized autoregressive conditional heteroskedasticity," Journal of Econometrics,
+   31, 307-327.
+
+Christensen, K.; Podolskij, M. and Vetter, M. (2009), "Bias-correcting the realized range-based variance in
+   the presence of market microstructure noise," Finance and Stochastics, 13, 239-268.
+
+Corsi, F. (2009), "A simple approximate long-memory model of realized volatility," Journal of Financial
+   Econometrics, 7, 174-196.
+
+Diebold, F. X. and Yilmaz, K. (2012), "Better to give than to receive: Predictive directional measurement
+   of volatility spillovers," International Journal of Forecasting, 28, 57-66.
+
+Diebold, F. X. and Yilmaz, K. (2015), Financial and macroeconomic connectedness: A network approach to
+   measurement and monitoring, vol. 121, Oxford University Press Oxford.
+
+Hecq, A.; Margaritella, L. and Smeekes, S. (2023), "Granger causality testing in high-dimensional VARs: A
+   post-double-selection procedure," Journal of Financial Econometrics, 21, 915-958.
+
+                                                                      4
+Hyndman, R. J. and Khandakar, Y. (2008), "Automatic time series forecasting: The forecast package for
+   R," Journal of Statistical Software, 27, 1-22.
+
+Ryan, J. A. and Ulrich, J. M. (2025), quantmod: Quantitative Financial Modelling Framework, r package
+   version 0.4.28.
+
+Tsay, R. S. (2010), Analysis of financial time series, vol. 3, wiley New York.
+
+                                                                      5
+

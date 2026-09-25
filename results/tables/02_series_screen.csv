@@ -1,0 +1,4 @@
+"","series","n_changes","nonpositive_price","exact_zero_values","zero_changes","longest_zero_run","max_abs_change","date_max_change","changes_gt_5sd"
+"1","y",6886,0,0,40,1,24.6893310546875,"2024-11-06",NA
+"2","log(y)",6886,NA,NA,40,1,0.232277789358937,"2009-01-20",31
+"3","r",6885,NA,40,0,0,0.456195031220549,"2009-01-21",28
