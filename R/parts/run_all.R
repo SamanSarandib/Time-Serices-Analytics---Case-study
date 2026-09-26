@@ -1,24 +1,5 @@
 ###############################################################################
 # EBC4008 Case 3 -- run the parts
-#
-#   Rscript R/parts/run_all.R            every part, 01 -> 13 (no 06: price and
-#                                        return ARIMA are both in 05)
-#   Rscript R/parts/run_all.R 7          07 and everything that depends on it
-#                                        (08, 09, 10, 13) -- use after editing 07
-#   Rscript R/parts/run_all.R 7 --only   exactly 07 (later parts then say they
-#                                        are out of date when they load it)
-# or Source this file in RStudio (runs every part).
-#
-# Each part runs via run_part() in its own environment, a child of the global
-# one: its objects stay there and don't reach other parts. Under Rscript that
-# is all a part sees besides 00_setup.R and what it need()s; Sourced in
-# RStudio it can also see whatever is in your workspace.
-# R/case3_run.R is the OLDER one-file version (y = log price, price ARIMA in 5,
-# returns in 6); its outputs no longer match the parts. The parts write
-# results/tables, results/figures, results/case3_results.rds,
-# results/parts/<part>.rds and one log per part in results/log/parts/.
-# After a data refresh or a model change, also delete results/cache or bump
-# CACHE_TAG in 00_setup.R: cached fits don't know the data changed.
 ###############################################################################
 
 ## ---- bootstrap: find R/parts/, load the shared setup -------------------------
