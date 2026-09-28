@@ -1,25 +1,15 @@
 ###############################################################################
-# EBC4008 Case 3 -- parts: shared setup
-#
-# Every part sources this first. Packages, paths, constants, and the toolkit
-#   need(part, objs)  load objects an earlier part saved. Runs that part first
-#                     if it has no saved output; says so if the output is out of
-#                     date. Call it BEFORE part_begin().
-#   part_begin(part)  start a part: drop its old output, seed, own log, tables
-#   part_save(objs)   save what later parts use to results/parts/<part>.rds,
-#                     with checksums of what it was built from
-#   run_part(part)    run one part in a fresh environment (run_all.R uses it)
-# Safe to source again and again
-# handy for poking around:  source("R/parts/00_setup.R"); need("07_garch", "fit_g")
+# EBC4008 Case 3 -- shared setup (every part sources it first; safe to re-source)
+# Needs:  R/case3_functions.R
+# Makes:  packages loaded, PARTS_DIR, ROOT, CFG, PARTS, constants (TICKERS ... EPISODES), tab() + TABLES,
+#         hac_se_by_lag(), toolkit: need(), part_begin(), part_save(), run_part(), part_tables(), part_downstream()
+# Writes: folders only: data/, results/{figures,tables,cache,log}/, results/parts/, results/log/parts/
 ###############################################################################
 
-# where R/parts/ is: this file's own location wins, then the session's last one
-# R reads files relative to the working directory
-# local {} => all variables vanish only normalizePath remains
+# find R/parts/ (Rscript, source() or RStudio Ctrl+Enter) -> PARTS_DIR
 PARTS_DIR <- local({
   f <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
   for (e in sys.frames()) if (is.character(e$ofile)) f <- c(e$ofile, f)
-  # Ctrl+Enter in RStudio sources no file: ask RStudio which one is open in the editor
   if (!length(f) && exists(".rs.api.getSourceEditorContext"))
     f <- as.character(.rs.api.getSourceEditorContext()$path)
   prev <- if (exists("PARTS_DIR")) get("PARTS_DIR") else character(0)
@@ -43,8 +33,7 @@ pkgs <- c(
   "vars", "frequencyConnectedness",         # VAR, Diebold-Yilmaz
   "moments"                                 # skewness, kurtosis
 )
-# Check which packages is missing in installed (True => missing)
-# Then either install automatically or manually if any is missing
+# install missing packages (or stop if AUTO_INSTALL is FALSE), then load them all
 missing_pkgs <- pkgs[!pkgs %in% rownames(installed.packages())]
 if (length(missing_pkgs)) {
   if (AUTO_INSTALL) {
@@ -57,41 +46,41 @@ if (length(missing_pkgs)) {
 }
 invisible(lapply(pkgs, library, character.only = TRUE))
 
-# case3/ is two levels above R/parts/
+# ROOT = case3/ (two levels above R/parts/); load the function library
 ROOT <- normalizePath(file.path(PARTS_DIR, "..", ".."), winslash = "/")
 if (!file.exists(file.path(ROOT, "R", "case3_functions.R")))
   stop("expected R/case3_functions.R in ", ROOT)
 source(file.path(ROOT, "R", "case3_functions.R"))
 
-# every table that goes through tab() is also kept in TABLES (emptied per part)
-# Upgraded tab
+# wrap tab(): also keep each table as TABLES[[name]] (data.frame; emptied per part)
 if (!exists("TABLES")) TABLES <- list()
 tab <- local({
   write_tab <- tab
   function(name, x, ...) { TABLES[[name]] <<- as.data.frame(x); write_tab(name, x, ...) }
 })
 
+# CFG: list of paths (datadir, resdir, figdir, tabdir, cachedir, logdir) + switches; makes the folders
 CFG <- case3_config(root = ROOT, cache_on = CACHE_ON, cache_tag = CACHE_TAG,
                     save_figs = SAVE_FIGS, seed = 1)
 CFG$partdir    <- file.path(CFG$resdir, "parts")     # each part's saved outputs
 CFG$partlogdir <- file.path(CFG$logdir, "parts")     # each part's console log
 for (d in c(CFG$partdir, CFG$partlogdir)) if (!dir.exists(d)) dir.create(d, recursive = TRUE)
 
-# Stock-exchange codes
+# the six bank tickers
 TICKERS  <- c("JPM", "BAC", "C", "WFC", "GS", "MS")
-# XLF is an exchange-traded fund holding the whole US financial sector; ^GSPC is the S&P 500 index. Downloaded, but only used in the history table
+# XLF = financial-sector ETF, ^GSPC = S&P 500: downloaded, only used in 01_history_depth
 BENCH    <- c("XLF", "^GSPC")         
-# Stock studied in detail
+# the bank studied in detail
 PRIMARY  <- "JPM"
-# Goldman Sachs' IPO
+# sample: Goldman Sachs' IPO to today
 START    <- "1999-05-04"   
-# today
 END      <- Sys.Date()
 DATAFILE <- file.path(CFG$datadir, "case3_prices.rds")
-# crisis dates
+# crisis windows -> named list (dotcom, gfc, euro, covid, banks23), each c(start, end)
 EPISODES <- case3_episodes()           
 
-# HAC SEs at several truncations as one table (parts 08 and 09)
+# Newey-West HAC SEs (no prewhitening) of an lm `fit` at each lag in `lags`; used by parts 08, 09
+# -> data.frame(hac_lag, one SE column per coefficient), one row per lag
 hac_se_by_lag <- function(fit, lags) do.call(rbind, lapply(lags, function(L) {
   V <- NeweyWest(fit, lag = L, prewhite = FALSE, adjust = TRUE)
   data.frame(hac_lag = L, t(sqrt(diag(V))), check.names = FALSE)
@@ -100,23 +89,24 @@ hac_se_by_lag <- function(fit, lags) do.call(rbind, lapply(lags, function(L) {
 
 ## ---- the parts toolkit -------------------------------------------------------
 
+# all parts, in run order
 PARTS <- c("01_data", "02_quality_screen", "03_exploration", "04_unit_roots",
            "05_arima", "07_garch", "08_realized_range_har",
            "09_monthly_rv", "10_out_of_sample", "11_spillovers", "12_crisis",
            "13_gather")
 
-part_out    <- function(part) file.path(CFG$partdir, paste0(part, ".rds"))  # Saved outputs of the parts
-part_script <- function(part) file.path(PARTS_DIR, paste0(part, ".R"))      # Code
+part_out    <- function(part) file.path(CFG$partdir, paste0(part, ".rds"))  # -> results/parts/<part>.rds
+part_script <- function(part) file.path(PARTS_DIR, paste0(part, ".R"))      # -> R/parts/<part>.R
 
-# a checkout can hold only some of the parts (e.g. 01-05): keep the ones present
+# keep only the parts whose script exists
 PARTS <- PARTS[file.exists(part_script(PARTS))]
 
-# Reads the script and determines what the part needs from need() through RE
+# regex the script for need("<part>" calls -> character vector of the parts it depends on
 part_deps <- function(part) {
   src <- readLines(part_script(part), warn = FALSE)
   unique(regmatches(src, regexpr('(?<=need\\(")[0-9]{2}_[a-z_]+', src, perl = TRUE)))
 }
-# a part plus every part that depends on it, directly or not, in run order
+# repeat part_deps() until nothing new -> `parts` + every part depending on them, in run order
 part_downstream <- function(parts) {
   todo <- parts
   repeat {
@@ -127,17 +117,17 @@ part_downstream <- function(parts) {
   PARTS[PARTS %in% todo]
 }
 
-# checksums of everything a part's output depends on
-# makes a fingerprint of everything a part's output needs, part_save() stores the list, while need() makes a fresh list to compare checksums
+# md5sum of the part's script, 00_setup.R, case3_functions.R, the data file (01 only), deps' .rds
+# -> named character vector (script, setup, functions, [data], <dep parts>); part_save() stores it
 provenance <- function(part) {
   deps <- part_deps(part)
   f <- c(script = part_script(part), setup = file.path(PARTS_DIR, "00_setup.R"),
          functions = file.path(ROOT, "R", "case3_functions.R"),
          if (part == "01_data") c(data = DATAFILE),
-         if (length(deps)) setNames(part_out(deps), deps))   # paste0(character(0), ...) isn't empty
+         if (length(deps)) setNames(part_out(deps), deps))   # guard: part_out(character(0)) isn't empty
   setNames(unname(tools::md5sum(f)), names(f))
 }
-# what changed since a part's output was saved (empty = up to date)
+# saved vs current provenance() -> labels of the changed inputs (length 0 = up to date)
 part_stale <- function(part, saved) {
   old <- saved$.provenance
   if (is.null(old)) return("no record of its inputs")
@@ -149,17 +139,15 @@ part_stale <- function(part, saved) {
   ifelse(ch %in% names(lab), lab[ch], paste0("output of ", ch))
 }
 
-# Run one part in a fresh environment (a child of the global one): its objects
-# stay there, and other parts' objects are not in it. The global workspace is
-# still visible, so the clean check that a need() list is complete is a fresh
-# Rscript run.
+# sys.source() the part's script in a fresh env (child of global); used by need() and run_all.R
 run_part <- function(part) {
   if (!part %in% PARTS) stop("unknown part: ", part)
   sys.source(part_script(part), envir = new.env(parent = globalenv()))
   invisible(part)
 }
 
-# Load `objs` saved by `part` into the caller's environment.
+# load `objs` from results/parts/<part>.rds into the caller's env, e.g. need("07_garch", "fit_g")
+# runs the part first if it has no .rds, notes if stale; call it before part_begin()
 need <- function(part, objs, envir = parent.frame()) {
   out <- part_out(part)
   if (!file.exists(out)) {
@@ -177,34 +165,31 @@ need <- function(part, objs, envir = parent.frame()) {
   invisible(objs)
 }
 
-# the tables a part wrote (13_gather rebuilds TABLES from these). Never runs a
-# part: 13_gather need()s every part before its part_begin().
+# -> named list of the data.frames `part` wrote with tab() (used by 13_gather); never runs the part
 part_tables <- function(part) {
   if (!file.exists(part_out(part))) stop(part, " has no saved output -- run it first")
   readRDS(part_out(part))$.tables
 }
 
+# .part_state: env holding the current part name and its log connection
 if (!exists(".part_state")) .part_state <- new.env()
 
-# Resets the env (encapsulated in .part_state)
-# deletes old files
-# opens and empties the log file
-# clears the TABLES
+# start a part: delete its old .rds, sink the console to results/log/parts/<part>.txt,
+# empty TABLES, set.seed(1)
 part_begin <- function(part) {
   while (sink.number() > 0) sink()          # leftover from a crashed part
   if (!is.null(.part_state$log)) try(close(.part_state$log), silent = TRUE)
-  unlink(part_out(part))                    # a failed run must not leave the old output behind
+  unlink(part_out(part))                    # so a failed run leaves no old output
   .part_state$part <- part
   .part_state$log  <- file(file.path(CFG$partlogdir, paste0(part, ".txt")), open = "wt")
   sink(.part_state$log, split = TRUE)
   TABLES <<- list()
-  set.seed(1)                               # every part starts from the same seed
+  set.seed(1)
   invisible(part)
 }
 
-# urca tests keep the function frame they ran in (lag matrix, helper fits),
-# through the terms of their lm() fit and of its model frame. Summaries,
-# statistics and critical values don't use it, so drop it before saving.
+# urca test objects: point their lm terms' .Environment at globalenv (drops the test's function frame)
+# -> same object, smaller .rds; anything else returned as is
 slim <- function(o) {
   if (isS4(o) && "testreg" %in% slotNames(o) && !is.null(o@testreg$terms)) {
     attr(o@testreg$terms, ".Environment") <- globalenv()
@@ -214,6 +199,8 @@ slim <- function(o) {
   o
 }
 
+# end a part: saveRDS(list(<objs> via slim(), .tables, .provenance)) -> results/parts/<part>.rds,
+# stops if an obj is missing, closes the log
 part_save <- function(objs, envir = parent.frame(), tables = TRUE) {
   part <- .part_state$part
   miss <- objs[!vapply(objs, exists, logical(1), envir = envir, inherits = FALSE)]

@@ -1,40 +1,20 @@
 ###############################################################################
 # EBC4008 Case 3 -- part 03: Data exploration
-#
-# Inputs come from need(),
-# outputs go to results/parts/03_exploration.rds via part_save().
-#
 # Needs : jpm <- 01_data
-# Makes : arch, lbr, ly, P, r, ra_r, rn, y
+# Makes : P, r (xts adjusted close, log return); y, ly, rn (plain numeric price,
+#         log price, log return); ra_r, lbr (data.frames); arch (ArchTest htest)
 # Writes: tables 03_descriptive_stats, 03_stylized_facts, 03_robust_acf,
 #         03_ljungbox_robust, 03_calendar_effects, 03_annual_volatility;
 #         figures 03_price_return_panels, 03_logprice_episodes,
 #         03_distribution_series, 03_boxplot_by_year, 03_rolling_stats,
 #         03_acf_contrast, 03_distribution, 03_boxplot_calendar,
 #         03_annual_volatility
-#
-# Notation from here on: y = price (adjusted close), log(y) = log price (ly in
-# the code), r = log return = diff(log(y)).
-
-# This script turns JPMs price into series usable by the models later on:
-# log-price, log-returns, plain numbers (instead of xtc)
-
-# Further it establishes 4 facts with evidence:
-# 1. Prices trend; returns sit around zero (price and return panels)
-# 2. Returns are close to uncorrelated once you use the right standard errors: robust Ljung-Box(10) p = 0.35; only lag 1 (-0.08, robust t = -2.6) survives -- hence the ARMA(1,1)/AR(1) mean in 05/07
-# 3. Volatility clusters and persists (	ACF of r2 and |r|, ARCH-LM, yearly volatility)
-# 4. Fat tails (kurtosis, Jarque–Bera, Q-Q plot, 3-sd count)
-
-# We also work with robust variance, because:
-# normal variance assumes the size of today's move has nothing to do with the size of the move k days earlier
-# JPM's returns are nearly uncorrelated (a small lag 1 only) but not independent, because big days sit next to big days
 ###############################################################################
 
-# bootstrap: find R/parts/ 
+# find R/parts/ and load the shared setup (Rscript, source() or RStudio Ctrl+Enter)
 PARTS_DIR <- local({
   f <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
   for (e in sys.frames()) if (is.character(e$ofile)) f <- c(e$ofile, f)
-  # Ctrl+Enter in RStudio sources no file: ask RStudio which one is open in the editor
   if (!length(f) && exists(".rs.api.getSourceEditorContext"))
     f <- as.character(.rs.api.getSourceEditorContext()$path)
   prev <- if (exists("PARTS_DIR")) get("PARTS_DIR") else character(0)
@@ -49,56 +29,45 @@ need("01_data", c("jpm"))
 
 part_begin("03_exploration")
 
-## ---- 3. Data exploration --------------------------------------------------------
-
-say("3. DATA EXPLORATION")
-
 P  <- Ad(jpm); colnames(P) <- "adjclose"            # adjusted price, xts (keeps the dates)
 r  <- na.omit(diff(log(P))); colnames(r) <- "ret"   # log return, xts
 y  <- as.numeric(P)                                 # y = price, plain
 ly <- log(y)                                        # log(y) = log price, plain
 rn <- as.numeric(r)                                 # r = log return, plain
 
-# Log returns: they add up over time (monthly RV in section 9 needs that), are
-# symmetric, and a random walk in the log price keeps prices positive.
-
-# The purpose is to show the two facts
-# 1. Price wanders with no fixed level, while return stays around 0
-# 2. The direction of returns is barely predictable (lag 1 only), but size is
-# P, log(P), r, abs(r) 
+# -> 03_price_return_panels: 4 rows P | log(P) | r | |r|
 fig("03_price_return_panels", plot_panels(
   list(P, log(P), r, abs(r)),
   titles = c(paste(PRIMARY, "adjusted close (levels)"),
              paste(PRIMARY, "log adjusted close"),
-             "Daily log returns -- note the volatility clustering",
-             "|log returns| -- persistence is in the SECOND moment"),
+             "Daily log returns",
+             "|log returns|"),
   main = paste0(PRIMARY, ", ", format(start(P)), " to ", format(end(P)))),
   height = 1250)
 
-# plot -> shade -> redraw the line on top (rect() paints over it)
-# Log(p) through the crisis 
-fig("03_logprice_episodes", {
-  par(mar = c(3, 4, 2.5, 1))
-  plot(zoo::as.zoo(log(P)), type = "n", xlab = "", ylab = "log adjusted close",
-       main = paste(PRIMARY, "log price with documented crisis episodes shaded"))
-  shade_episodes(EPISODES)
-  lines(zoo::as.zoo(log(P)), lwd = 1.6, col = "grey15")
-  grid(col = "grey88")
-  legend("topleft", bty = "n", cex = 0.85,
-         legend = paste(names(EPISODES),
-                        sapply(EPISODES, function(w) paste(substr(w, 1, 7), collapse = " to "))))
-})
+# -> 03_logprice_episodes: 3 rows P | log(P) | r, legend in the top panel
+fig("03_logprice_episodes", plot_panels(
+  list(P, log(P), r),
+  titles = c(paste(PRIMARY, "adjusted close (levels)"),
+             paste(PRIMARY, "log adjusted close"),
+             "Daily log returns"),
+  main = paste(PRIMARY, "with documented crisis episodes shaded"),
+  panel = function(x, y, ...) {
+    shade_episodes(EPISODES)                  # first, so the bands sit behind the series
+    lines(x, y, ...)
+    if (par("mfg")[1] == 1)                   # mfg[1] = row of the panel being drawn: legend in the top one
+      legend("topleft", bty = "n", cex = 0.85,
+             legend = paste(names(EPISODES),
+                            sapply(EPISODES, function(w) paste(substr(w, 1, 7), collapse = " to "))))
+  }),
+  height = 1100)
 
-## --- y, log(y) and r side by side
-# Same statistics for all three, so the contrast is in one table:
-# y and log(y) have huge autocorrelation at lag 1 AND lag 10 (no fixed level,
-# a unit root -- tested in 04); r has almost none. Skewness/kurtosis/Jarque-Bera
-# of a trending level describe the path taken, not a distribution -- they are
-# only meaningful for r.
+# Data summary
+# -> 03_descriptive_stats: statistic | y | log(y) | r (14 rows)
 sl <- list(y = y, "log(y)" = ly, r = rn)
 desc <- do.call(cbind, lapply(sl, function(x) {
-  jbx <- tseries::jarque.bera.test(x)
-  lbx <- Box.test(x, lag = 10, type = "Ljung-Box")
+  jbx <- tseries::jarque.bera.test(x)              # H0: normal (p = prob of normal)
+  lbx <- Box.test(x, lag = 10, type = "Ljung-Box") # H0: iid (p = prob of iid)
   ac  <- as.numeric(acf(x, lag.max = 10, plot = FALSE)$acf)
   c(n = length(x), mean = mean(x), median = median(x), sd = sd(x),
     min = min(x), max = max(x),
@@ -112,10 +81,7 @@ tab("03_descriptive_stats", desc, digits = 4,
     caption = paste("Descriptive statistics of y (price), log(y) and r (log return);",
                     "Ljung-Box = textbook iid version, the robust one is in 03_ljungbox_robust"))
 
-# Histogram (top) over a horizontal boxplot (bottom) on the same x-axis, per
-# series. y is right-skewed (the 2020s run-up sits in the upper tail); log(y)
-# pulls that in; r is centred on 0, symmetric and peaked, with many points
-# beyond the whiskers -- the fat tails.
+# -> 03_distribution_series: 2x3 grid, rows histogram | boxplot, columns y | log(y) | r
 fig("03_distribution_series", {
   layout(matrix(1:6, 2, 3), heights = c(3, 1.4))
   for (nm in names(sl)) {
@@ -129,11 +95,8 @@ fig("03_distribution_series", {
   }
 }, height = 900)
 
-# One box per calendar year. y and log(y): the box moves, so the mean isn't
-# constant (non-stationary). r: every box sits on 0, but its height changes
-# with the regime -- constant mean, changing CONDITIONAL variance (volatility
-# clustering; the unconditional variance can still be constant).
-# 1999 (from May) and 2026 (to September) are partial years.
+# one box per calendar year (1999 and 2026 are partial years)
+# -> 03_boxplot_by_year: 3 rows y | log(y) | r (r with a red dashed 0 line)
 yr_y <- format(index(P), "%Y")
 yr_r <- format(index(r), "%Y")
 fig("03_boxplot_by_year", {
@@ -147,13 +110,8 @@ fig("03_boxplot_by_year", {
   abline(h = 0, col = "red", lty = 2)
 }, height = 1400)
 
-# Rolling 250-day (~1 year) mean and sd: a visual stationarity check.
-# Stationary = the rolling stats keep coming back to one level; a unit root
-# lets the mean wander off. y fails, and its sd grows with the price level --
-# why we take logs. log(y) still has a wandering mean. r: no trend in the mean,
-# it stays within ~2.5 se (sd(r)/sqrt(250) = 0.0015, red dotted = 2 se) of 0 --
-# noise, not a moving level. Its sd swings ~8x with the crises: volatility
-# clustering (conditional variance, what GARCH models), not a unit root.
+# visual stationarity check
+# -> 03_rolling_stats: 3x2 grid, rows y | log(y) | r, columns mean | sd
 ROLL <- 250
 sx <- list(y = P, "log(y)" = log(P), r = r)
 fig("03_rolling_stats", {
@@ -173,29 +131,9 @@ fig("03_rolling_stats", {
   }
 }, height = 1300)
 
-# Stylized facts as a table, one row per fact.
-# stylized facts table provides statistics used for the rest of the case's 
-# modelling choices (stylized-facts = patterns that daily stock-return series show)
-# Values:
-# 1. Sample and scale
-# mean (daily, %)    = how small the avg return is next to the noise (t-stat shows its not significantly different from 0; Newey-West t = 1.5-1.6, still < 1.96)
-# sd (daily, %)      = size of the daily moves
-# sd (annualised, %) = same number the unit volatility is quoted on
-# min (%) / max (%)  = the worst and best days 10 sd (should come every 10^20 years)
-
-# 2. Shape of the distribution:
-# skewness                     = checks whether big up days and big down days are equally common
-# excess kurtosis              = measures how heavy the tails are
-# Jarque–Bera stat             = the formal normality test, combining the two rows above 
-# share of days |r| > 3 sd (%) = the kurtosis result in plain language
-# normal benchmark (%)         = the share of days beyond 3 sd under a normal distribution
-
-# 3. can past returns predict returns?:
-# Ljung-Box(10) on r
-
-# 4. Can past volatility predict volatility?
-# Ljung–Box(10) on r2 and Ljung–Box(22) on |r|
-# ARCH-LM(12) = Engle's formal test for ARCH effects, the test usually run before fitting a GARCH. (ARCH-LM is the regression form that GARCH itself is built on)
+# stylized facts of r: mean (+ iid t), sd, min/max, skew, kurtosis, Jarque-Bera, iid Ljung-Box
+# on r(10), r^2(10), |r|(22), ARCH-LM(12) (FinTS::ArchTest), share of |r| > 3 sd vs the normal's
+# -> 03_stylized_facts: statistic | value (21 rows)
 jb  <- tseries::jarque.bera.test(rn)
 lb  <- function(x, k) Box.test(x, lag = k, type = "Ljung-Box")
 arch <- FinTS::ArchTest(rn, lags = 12, demean = TRUE)
@@ -223,20 +161,14 @@ tab("03_stylized_facts", facts, digits = 4,
     caption = "Stylized facts of JPM daily log returns")
 
 
-# acf()'s dashed band is 1.96/sqrt(n), i.e. iid. Returns are nearly uncorrelated but
-# heteroskedastic, so that band is too narrow and flags fake significant lags.
-# Red = ARCH-robust band (Diebold 1986; Lobato-Nankervis-Savin 2001).
-# se_robust = 1/sqrt(n)  ×  √( mean(a^2 · b^2) / mean(x^2)^2 )
-# 2 weaknesses:
-# 1. luck adds up over number of tests
-# 2. small effects add up
+# ACF of r with iid vs ARCH-robust se (robust_acf_se)
+# -> ra_r / 03_robust_acf: lag | acf | se_iid | se_robust | inflation (= se_robust / se_iid)
 ra_r <- robust_acf_se(rn, K = 40)
 tab("03_robust_acf", head(ra_r, 12), digits = 5,
     caption = "Return ACF with iid vs heteroskedasticity-robust standard errors (first 12 lags)")
 
-# the correction matters for the ACF of r; for r^2 the dependence IS the signal
-# Outside the red band: lags 1 (-0.080), 33 and 34 -- 3 of 40, ~2 expected by
-# chance, so only lag 1 counts. The PACF gets the same robust band.
+# acf_robust()/pacf_robust() add the ARCH-robust band in red; r^2 and |r| keep plain acf()
+# -> 03_acf_contrast: 2x2 grid, ACF r | ACF r^2 | ACF |r| | PACF r (40 lags)
 fig("03_acf_contrast", {
   par(mfrow = c(2, 2), mar = ACF_MAR)   # ACF_MAR: room for acf()'s titles
   acf_robust(rn, lag.max = 40, main = "ACF of returns (red = ARCH-robust band)")
@@ -245,11 +177,8 @@ fig("03_acf_contrast", {
   pacf_robust(rn, lag.max = 40, main = "PACF of returns (red = ARCH-robust band)")
 }, height = 1050)
 
-# same correction for the Ljung-Box test itself
-# Ljung-Box: For each lag, measure how many standard errors the autocorrelation is from zero. That is its t-ratio. then squares each t-ratio
-# se used in LB is still too narrow
-# LBr:
-# mean_se_inflation is the average correction factor over the lags, which tells you how much the correction mattered for this series.
+# Ljung-Box, textbook vs ARCH-robust (lb_robust), on r (10, 22 lags), r^2 (10), |r| (22)
+# -> lbr / 03_ljungbox_robust: series | lags | LB_standard | p_standard | LB_robust | p_robust | mean_se_inflation
 lbr <- rbind(cbind(series = "r",   lb_robust(rn, 10)),
              cbind(series = "r",   lb_robust(rn, 22)),
              cbind(series = "r^2", lb_robust(rn^2, 10)),
@@ -257,6 +186,8 @@ lbr <- rbind(cbind(series = "r",   lb_robust(rn, 10)),
 tab("03_ljungbox_robust", lbr, digits = 4,
     caption = "Ljung-Box: textbook versus heteroskedasticity-robust")
 
+# qqnorm() + qqline(); 200-bin histogram density vs dnorm(mean(r), sd(r)), x cut to +-0.15
+# -> 03_distribution: 2 panels, normal Q-Q of r | density vs fitted normal
 fig("03_distribution", {
   par(mfrow = c(1, 2), mar = c(4, 4, 2.5, 1))
   qqnorm(rn, pch = 16, cex = 0.35, col = "grey35",
@@ -269,12 +200,8 @@ fig("03_distribution", {
          col = c("grey60", "red"), bty = "n")
 })
 
-# Calendar effects: does the average return depend on the month or the
-# weekday? Boxes = median and IQR, red dot = mean. Outliers aren't drawn, or the
-# 2008-09 days squash every box flat.
-# Test: regress r on month (weekday) dummies, H0 = all means equal. With the
-# iid F, and with White (HC1) standard errors, which don't let the crisis
-# days' volatility pass for a calendar effect.
+# boxplots of r (%) by month and weekday, red dot = mean, outliers not drawn
+# -> 03_boxplot_calendar: 2 panels month | weekday
 mon <- factor(month.abb[as.integer(format(index(r), "%m"))], levels = month.abb)
 wkd <- factor(c("Mon", "Tue", "Wed", "Thu", "Fri")[as.integer(format(index(r), "%u"))],
               levels = c("Mon", "Tue", "Wed", "Thu", "Fri"))
@@ -288,6 +215,8 @@ fig("03_boxplot_calendar", {
     abline(h = 0, lty = 2, col = "grey40")
   }
 })
+# lm(rn ~ f) for f = month, weekday; joint F test of the dummies (lmtest::waldtest), iid and White HC1 vcov
+# -> 03_calendar_effects: effect | groups | df | F_iid | p_iid | F_robust | p_robust
 cal_test <- do.call(rbind, lapply(list(month = mon, weekday = wkd), function(f) {
   m  <- lm(rn ~ f)
   wi <- lmtest::waldtest(m)                                             # iid F
@@ -300,7 +229,8 @@ cal_test <- data.frame(effect = rownames(cal_test), cal_test, row.names = NULL)
 tab("03_calendar_effects", cal_test, digits = 4,
     caption = "Calendar effects in r: H0 = equal mean return in every month / weekday")
 
-# annual vol: clustering and the crises in one picture
+# annualised sd of r per calendar year (sd * sqrt(252) * 100)
+# -> figure 03_annual_volatility: one bar per year, red dashed = mean; table: year | ann_vol_pct
 yr    <- format(index(r), "%Y")
 annvol <- tapply(rn, yr, function(z) sd(z) * sqrt(252) * 100)
 fig("03_annual_volatility", {
