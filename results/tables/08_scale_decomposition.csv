@@ -1,0 +1,9 @@
+"","quantity","value"
+"1","mean GARCH variance",0.000507108198510164
+"2","mean HAR fitted, naive exp() (a MEDIAN)",0.00024919825139437
+"3","mean HAR fitted, Jensen-corrected (a MEAN)",0.00033339980021492
+"4","ratio GARCH / HAR_naive",2.03495889586977
+"5","ratio GARCH / HAR_jensen",1.521021302902
+"6","Jensen factor exp(sigma^2/2), predicted",1.33788980600549
+"7","overnight variance share (02)",0.299
+"8","predicted GARCH/HAR = 1 / intraday variance share",1.466
