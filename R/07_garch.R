@@ -12,24 +12,58 @@
 # the standardized residuals z_t = (r_t - mu_t) / sigma_t
 
 
-# find R/parts/
-PARTS_DIR <- local({
-  f <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
-  for (e in sys.frames()) if (is.character(e$ofile)) f <- c(e$ofile, f)
-  # Ctrl+Enter in RStudio sources no file: ask RStudio which one is open in the editor
-  if (!length(f) && exists(".rs.api.getSourceEditorContext"))
-    f <- as.character(.rs.api.getSourceEditorContext()$path)
-  prev <- if (exists("PARTS_DIR")) get("PARTS_DIR") else character(0)
-  cand <- c(dirname(normalizePath(f, mustWork = FALSE)), prev, "R/parts", "parts", ".")
-  hit  <- cand[file.exists(file.path(cand, "00_setup.R"))]
-  if (!length(hit)) stop("can't find R/parts/00_setup.R -- setwd() to the case3 folder")
-  normalizePath(hit[1], winslash = "/")
-})
-source(file.path(PARTS_DIR, "00_setup.R"))
+library(rugarch)
 
-need("03_exploration", c("arch", "r", "rn"))
+d01 <- readRDS("results/rds/01_data.rds")
+EPISODES <- d01$EPISODES
+d03 <- readRDS("results/rds/03_exploration.rds")
+arch <- d03$arch; r <- d03$r; rn <- d03$rn
 
-part_begin("07_garch")
+PRIMARY <- "JPM"
+
+say <- function(...) cat(..., "\n", sep = "")
+
+tab <- function(name, x, digits = NULL, caption = NULL) {
+  write.csv(x, paste0("results/tables/", name, ".csv"))
+  cat(caption, "\n")
+  print(x, digits = digits)
+}
+
+fig <- function(name, expr, height = 950) {
+  png(paste0("results/figures/", name, ".png"), width = 1500, height = height, res = 130)
+  on.exit(dev.off())
+  expr
+}
+
+cache <- function(key, expr) expr
+
+stars <- function(p) ifelse(p < .01, "***", ifelse(p < .05, "**", ifelse(p < .10, "*", "")))
+
+shade_episodes <- function(episodes) {
+  usr <- par("usr")
+  for (w in episodes) rect(as.Date(w[1]), usr[3], as.Date(w[2]), usr[4],
+                           col = adjustcolor("grey60", 0.28), border = NA)
+}
+
+robust_acf_se <- function(x, K) {
+  x <- x - mean(x)
+  n <- length(x)
+  d <- mean(x^2)^2
+  se <- sapply(1:K, function(k) sqrt(mean(x[(k + 1):n]^2 * x[1:(n - k)]^2) / d / n))
+  data.frame(lag = 1:K, acf = as.numeric(acf(x, lag.max = K, plot = FALSE)$acf)[-1],
+             se_iid = 1 / sqrt(n), se_robust = se, inflation = se * sqrt(n))
+}
+
+lb_robust <- function(x, lags) {
+  n  <- length(x)
+  ra <- robust_acf_se(x, lags)
+  q_std <- n * (n + 2) * sum(ra$acf^2 / (n - ra$lag))
+  q_rob <- sum((ra$acf / ra$se_robust)^2)
+  data.frame(lags = lags,
+             LB_standard = q_std, p_standard = pchisq(q_std, lags, lower.tail = FALSE),
+             LB_robust   = q_rob, p_robust   = pchisq(q_rob, lags, lower.tail = FALSE),
+             mean_se_inflation = mean(ra$inflation))
+}
 
 ##Modeling volatility: GARCH models
 
@@ -247,6 +281,6 @@ fig("07_garch_nic", {
          legend = c("sGARCH-std (symmetric)", "eGARCH-std", "gjrGARCH-std"))
 })
 
-part_save(c("best_order", "garch_best", "garch_cmp", "garch_fits", "garch_order_cmp",
-            "garch_std_resid_tests", "nic", "sigma_best"))
+saveRDS(mget(c("best_order", "garch_best", "garch_cmp", "garch_fits", "garch_order_cmp",
+               "garch_std_resid_tests", "nic", "sigma_best")), "results/rds/07_garch.rds")
 

@@ -10,19 +10,30 @@
 # before the GFC. The full-sample estimate is included as context.
 ###############################################################################
 
-PARTS_DIR <- local({
-  f <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
-  for (e in sys.frames()) if (is.character(e$ofile)) f <- c(e$ofile, f)
-  prev <- if (exists("PARTS_DIR")) get("PARTS_DIR") else character(0)
-  cand <- c(dirname(normalizePath(f, mustWork = FALSE)), prev, "R/parts", "parts", ".")
-  hit  <- cand[file.exists(file.path(cand, "00_setup.R"))]
-  if (!length(hit)) stop("can't find R/parts/00_setup.R -- put this file in R/parts/")
-  normalizePath(hit[1], winslash = "/")
-})
-source(file.path(PARTS_DIR, "00_setup.R"))
+library(xts)
 
-need("01_data", c("prices"))
-part_begin("12_crisis")
+d01 <- readRDS("results/rds/01_data.rds")
+prices <- d01$prices; TICKERS <- d01$TICKERS; EPISODES <- d01$EPISODES
+
+say <- function(...) cat(..., "\n", sep = "")
+
+tab <- function(name, x, digits = NULL, caption = NULL) {
+  write.csv(x, paste0("results/tables/", name, ".csv"))
+  cat(caption, "\n")
+  print(x, digits = digits)
+}
+
+fig <- function(name, expr, height = 950) {
+  png(paste0("results/figures/", name, ".png"), width = 1500, height = height, res = 130)
+  on.exit(dev.off())
+  expr
+}
+
+var_max_lag <- function(Tn, K, lag_max, min_obs_per_param) {
+  p <- seq_len(lag_max)
+  ok <- (Tn - p) >= min_obs_per_param * (K * p + 1)
+  if (any(ok)) max(p[ok]) else 0L
+}
 
 say("12. CRISIS VS NON-CRISIS VOLATILITY SPILLOVERS")
 
@@ -55,7 +66,7 @@ if (nrow(log_range_panel) <= FEVD_HORIZON + length(TICKERS) * 10L)
 
 ## ---- Define matched crisis and non-crisis periods ----------------------------
 
-gfc_window <- case3_clean_crisis()[["gfc"]]
+gfc_window <- EPISODES[["gfc"]]
 gfc_start <- as.Date(gfc_window[1L])
 gfc_end <- as.Date(gfc_window[2L])
 gfc_idx <- which(dates >= gfc_start & dates <= gfc_end)
@@ -220,8 +231,9 @@ fig("12_crisis_net_directional", {
   grid(nx = NA, ny = NULL, col = "grey88")
 })
 
-part_save(c("crisis_period_indices", "crisis_spillover_directional",
-            "crisis_spillover_results", "crisis_spillover_summary",
-            "crisis_var_lag_criteria", "log_range_panel", "range_panel"))
+saveRDS(mget(c("period_indices", "crisis_spillover_directional",
+               "crisis_spillover_results", "crisis_spillover_summary",
+               "crisis_var_lag_criteria", "log_range_panel", "range_panel")),
+        "results/rds/12_crisis.rds")
 
 

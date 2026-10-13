@@ -1,30 +1,32 @@
 ###############################################################################
 # EBC4008 Case 3 -- part 04: unit roots (Pantula principle, bootUR) on y, log(y), r
 # Needs : ly, rn, y <- 03_exploration
-# Makes : ur (per-series list of bootUR::adf results), pantula, integ, kpss_tab,
+# Makes : ur (per-series list of bootUR::boot_adf results), pantula, integ, kpss_tab,
 #         det_tab, det_adf (data.frames), maxlag (integer ADF lag ceiling)
 # Writes: tables 04_pantula, 04_kpss_bandwidth, 04_integration_order,
 #         04_deterministics, 04_deterministics_adf
 # Order : 1. Pantula (order of integration)  2. KPSS check  3. deterministics
 ###############################################################################
 
-# find R/parts/ and load the shared setup (Rscript, source() or RStudio Ctrl+Enter)
-PARTS_DIR <- local({
-  f <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
-  for (e in sys.frames()) if (is.character(e$ofile)) f <- c(e$ofile, f)
-  if (!length(f) && exists(".rs.api.getSourceEditorContext"))
-    f <- as.character(.rs.api.getSourceEditorContext()$path)
-  prev <- if (exists("PARTS_DIR")) get("PARTS_DIR") else character(0)
-  cand <- c(dirname(normalizePath(f, mustWork = FALSE)), prev, "R/parts", "parts", ".")
-  hit  <- cand[file.exists(file.path(cand, "00_setup.R"))]
-  if (!length(hit)) stop("can't find R/parts/00_setup.R -- setwd() to the case3 folder")
-  normalizePath(hit[1], winslash = "/")
-})
-source(file.path(PARTS_DIR, "00_setup.R"))
+library(bootUR)
+library(urca)
+library(sandwich)
 
-need("03_exploration", c("ly", "rn", "y"))
+d03 <- readRDS("results/rds/03_exploration.rds")
+ly <- d03$ly; rn <- d03$rn; y <- d03$y
 
-part_begin("04_unit_roots")
+badf <- function(x, deterministics) {
+  set.seed(1)
+  boot_adf(x, deterministics = deterministics, criterion_scale = FALSE, show_progress = FALSE)
+}
+
+stars <- function(p) ifelse(p < .01, "***", ifelse(p < .05, "**", ifelse(p < .10, "*", "")))
+
+tab <- function(name, x, digits = NULL, caption = NULL) {
+  write.csv(x, paste0("results/tables/", name, ".csv"))
+  cat(caption, "\n")
+  print(x, digits = digits)
+}
 
 SER    <- list(y = y, "log(y)" = ly, r = rn)
 maxlag <- trunc(12 * (length(y) / 100)^(1 / 4))        # Schwert (1989) = bootUR's default max_lag
@@ -37,14 +39,14 @@ LEVEL  <- 0.05
 #   test x           H0: I(1) vs I(0)    trend for y, log(y) (they rise); intercept for r
 # The order is the first step from the top where the unit root is NOT rejected
 # (all three rejected -> I(0)).
-# bootUR::adf = standard ADF, lags by modified AIC (MAIC), MacKinnon p-value.
+# bootUR::boot_adf = ADF, lags by modified AIC (MAIC), wild-bootstrap (AWB) p-value.
 LEVEL_DET <- c(y = "trend", "log(y)" = "trend", r = "intercept")
 
 ur <- lapply(setNames(names(SER), names(SER)), function(s) {
   x <- SER[[s]]
-  list(d2 = adf(diff(x, differences = 2), deterministics = "intercept"),
-       d1 = adf(diff(x, differences = 1), deterministics = "intercept"),
-       d0 = adf(x,                        deterministics = LEVEL_DET[[s]]))
+  list(d2 = badf(diff(x, differences = 2), deterministics = "intercept"),
+       d1 = badf(diff(x, differences = 1), deterministics = "intercept"),
+       d0 = badf(x,                        deterministics = LEVEL_DET[[s]]))
 })
 
 # -> 04_pantula: series | step | H0 | tested_on | deterministics | statistic | p_value | reject_5pct
@@ -59,7 +61,7 @@ pantula <- do.call(rbind, lapply(names(SER), function(s) {
 }))
 pantula$reject_5pct <- pantula$p_value < LEVEL
 tab("04_pantula", pantula, digits = 4,
-    caption = "Pantula principle with bootUR::adf: from the second difference down to the level")
+    caption = "Pantula principle with bootUR::boot_adf: from the second difference down to the level")
 
 # order = first non-rejection from the top
 # -> integ: series | order | d   (KPSS columns added in section 2)
@@ -151,7 +153,7 @@ det_adf <- do.call(rbind, lapply(names(SER), function(s) {
   cs  <- k$p_const < LEVEL; ts <- k$p_trend < LEVEL
   sup <- if (d_of(s) >= 1L) { if (cs) "trend" else "intercept" } else
   { if (ts) "trend" else if (cs) "intercept" else "none" }
-  o   <- adf(SER[[s]], deterministics = sup)
+  o   <- badf(SER[[s]], deterministics = sup)
   p0  <- pantula$p_value[pantula$series == s & pantula$step == 3]
   data.frame(series = s,
              det_pantula = LEVEL_DET[[s]], p_pantula = p0,
@@ -165,4 +167,5 @@ tab("04_deterministics_adf", det_adf, digits = 4,
     caption = "Retest of I(1) vs I(0) on the level with the data-supported deterministics")
 
 # -> results/parts/04_unit_roots.rds
-part_save(c("det_adf", "det_tab", "integ", "kpss_tab", "maxlag", "pantula", "ur"))
+saveRDS(mget(c("det_adf", "det_tab", "integ", "kpss_tab", "maxlag", "pantula", "ur")),
+        "results/rds/04_unit_roots.rds")

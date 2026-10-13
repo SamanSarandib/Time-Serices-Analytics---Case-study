@@ -11,19 +11,36 @@
 # training sample; forecasts then update one day at a time using observed data.
 ###############################################################################
 
-PARTS_DIR <- local({
-  f <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
-  for (e in sys.frames()) if (is.character(e$ofile)) f <- c(e$ofile, f)
-  prev <- if (exists("PARTS_DIR")) get("PARTS_DIR") else character(0)
-  cand <- c(dirname(normalizePath(f, mustWork = FALSE)), prev, "R/parts", "parts", ".")
-  hit  <- cand[file.exists(file.path(cand, "00_setup.R"))]
-  if (!length(hit)) stop("can't find R/parts/00_setup.R -- put this file in R/parts/")
-  normalizePath(hit[1], winslash = "/")
-})
-source(file.path(PARTS_DIR, "00_setup.R"))
+library(rugarch)
 
-need("03_exploration", c("r"))
-part_begin("10_out_of_sample")
+d03 <- readRDS("results/rds/03_exploration.rds")
+r <- d03$r
+
+say <- function(...) cat(..., "\n", sep = "")
+
+tab <- function(name, x, digits = NULL, caption = NULL) {
+  write.csv(x, paste0("results/tables/", name, ".csv"))
+  cat(caption, "\n")
+  print(x, digits = digits)
+}
+
+fig <- function(name, expr, height = 950) {
+  png(paste0("results/figures/", name, ".png"), width = 1500, height = height, res = 130)
+  on.exit(dev.off())
+  expr
+}
+
+qlike <- function(y, f) y / f - log(y / f) - 1
+
+dm_test <- function(l1, l2, h = 1L) {
+  d <- l1 - l2
+  d <- d[is.finite(d)]
+  n <- length(d)
+  g <- acf(d, lag.max = h - 1L, type = "covariance", plot = FALSE)$acf[, 1, 1]
+  v <- (g[1] + 2 * sum(g[-1])) / n
+  stat <- mean(d) / sqrt(v) * sqrt((n + 1 - 2 * h + h * (h - 1) / n) / n)
+  list(mean_diff = mean(d), stat = stat, p = 2 * pt(-abs(stat), df = n - 1), n = n)
+}
 
 say("10. OUT-OF-SAMPLE GARCH VS HAR FORECAST EVALUATION")
 
@@ -247,6 +264,7 @@ fig("10_oos_forecast_comparison", {
   grid(col = "grey88")
 })
 
-part_save(c("garch_model_selection", "garch_order_selection",
-            "garch_selected_model", "garch_selected_order", "garch_fit_oos",
-            "har_fit", "oos_dm", "oos_forecasts", "oos_metrics"))
+saveRDS(mget(c("garch_model_selection", "garch_order_selection",
+               "garch_selected_model", "garch_selected_order", "garch_fit_oos",
+               "har_fit", "oos_dm", "oos_forecasts", "oos_metrics")),
+        "results/rds/10_out_of_sample.rds")

@@ -18,7 +18,7 @@ jpm <- d01$jpm
 d02 <- readRDS("results/rds/02_quality_screen.rds")
 qual <- d02$qual
 d07 <- readRDS("results/rds/07_garch.rds")
-sigma_garch <- d07$sigma_garch
+sigma_garch <- d07$sigma_best^2
 
 # HAR (Corsi 2009): v[t+1] on trailing means of v over p periods, OLS, NW lag = max(p) -> list
 fit_har <- function(v, p) {
