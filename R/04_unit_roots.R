@@ -1,116 +1,168 @@
 ###############################################################################
-# EBC4008 Case 3 -- part 04: unit roots (Pantula): y, log(y), r
-# Reads : results/rds/03_exploration.rds (y, ly, rn)
-# Writes: tables 04_lag_selection, 04_pantula, 04_kpss_bandwidth, 04_unitroot_summary,
-#         04_integration_order; results/rds/04_unit_roots.rds
+# EBC4008 Case 3 -- part 04: unit roots (Pantula principle, bootUR) on y, log(y), r
+# Needs : ly, rn, y <- 03_exploration
+# Makes : ur (per-series list of bootUR::adf results), pantula, integ, kpss_tab,
+#         det_tab, det_adf (data.frames), maxlag (integer ADF lag ceiling)
+# Writes: tables 04_pantula, 04_kpss_bandwidth, 04_integration_order,
+#         04_deterministics, 04_deterministics_adf
+# Order : 1. Pantula (order of integration)  2. KPSS check  3. deterministics
 ###############################################################################
 
-library(bootUR)    # boot_adf()
-library(tseries)   # kpss.test()
+# find R/parts/ and load the shared setup (Rscript, source() or RStudio Ctrl+Enter)
+PARTS_DIR <- local({
+  f <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
+  for (e in sys.frames()) if (is.character(e$ofile)) f <- c(e$ofile, f)
+  if (!length(f) && exists(".rs.api.getSourceEditorContext"))
+    f <- as.character(.rs.api.getSourceEditorContext()$path)
+  prev <- if (exists("PARTS_DIR")) get("PARTS_DIR") else character(0)
+  cand <- c(dirname(normalizePath(f, mustWork = FALSE)), prev, "R/parts", "parts", ".")
+  hit  <- cand[file.exists(file.path(cand, "00_setup.R"))]
+  if (!length(hit)) stop("can't find R/parts/00_setup.R -- setwd() to the case3 folder")
+  normalizePath(hit[1], winslash = "/")
+})
+source(file.path(PARTS_DIR, "00_setup.R"))
 
-d03 <- readRDS("results/rds/03_exploration.rds")
-y <- d03$y; ly <- d03$ly; rn <- d03$rn
+need("03_exploration", c("ly", "rn", "y"))
 
-SER       <- list(y = y, "log(y)" = ly, r = rn)
-DET       <- c(y = "trend", "log(y)" = "trend", r = "intercept")   # boot_adf deterministics
-KPSS_NULL <- c(y = "Trend", "log(y)" = "Trend", r = "Level")       # KPSS H0 on level
+part_begin("04_unit_roots")
 
-maxlag <- trunc(12 * (length(y) / 100)^(1 / 4))   # Schwert (1989) ceiling
+SER    <- list(y = y, "log(y)" = ly, r = rn)
+maxlag <- trunc(12 * (length(y) / 100)^(1 / 4))        # Schwert (1989) = bootUR's default max_lag
+LEVEL  <- 0.05
 
-# bootstrap ADF: AWB, 1999 reps, lags by `crit`, OLS detrending (default) -> htest
-badf <- function(x, det, crit, label) {
-  set.seed(1)
-  boot_adf(x, data_name = label, bootstrap = "AWB", B = 1999, deterministics = det,
-           max_lag = maxlag, criterion = crit, criterion_scale = FALSE, show_progress = FALSE)
-}
+## ---- 1. Pantula principle -------------------------------------------------
+# Start at the highest order and work down, one unit root at a time:
+#   test diff(x, 2)  H0: I(3) vs I(2)    intercept
+#   test diff(x, 1)  H0: I(2) vs I(1)    intercept
+#   test x           H0: I(1) vs I(0)    trend for y, log(y) (they rise); intercept for r
+# The order is the first step from the top where the unit root is NOT rejected
+# (all three rejected -> I(0)).
+# bootUR::adf = standard ADF, lags by modified AIC (MAIC), MacKinnon p-value.
+LEVEL_DET <- c(y = "trend", "log(y)" = "trend", r = "intercept")
 
-# lags boot_adf picked -> integer
-lags_used <- function(a) as.integer(a$details$`selected lags`)
+ur <- lapply(setNames(names(SER), names(SER)), function(s) {
+  x <- SER[[s]]
+  list(d2 = adf(diff(x, differences = 2), deterministics = "intercept"),
+       d1 = adf(diff(x, differences = 1), deterministics = "intercept"),
+       d0 = adf(x,                        deterministics = LEVEL_DET[[s]]))
+})
 
-# boot_adf on the level per lag criterion (MAIC/MBIC: Ng-Perron) -> lagfit, 04_lag_selection
-lagfit <- list()
-lagsel <- NULL
-for (s in names(SER)) {
-  lagfit[[s]] <- list()
-  for (cr in c("AIC", "BIC", "MAIC", "MBIC")) {
-    a <- badf(SER[[s]], DET[[s]], cr, label = s)
-    lagfit[[s]][[cr]] <- a
-    lagsel <- rbind(lagsel, data.frame(
-      series = s, deterministics = DET[[s]], criterion = cr, ceiling = a$specifications$max_lag,
-      lags_used = lags_used(a), tau = unname(a$statistic), p_boot = unname(a$p.value)))
-  }
-}
-write.csv(lagsel, "results/tables/04_lag_selection.csv")
-print(lagsel, digits = 3)
+# -> 04_pantula: series | step | H0 | tested_on | deterministics | statistic | p_value | reject_5pct
+pantula <- do.call(rbind, lapply(names(SER), function(s) {
+  data.frame(series = s, step = 1:3,
+             H0 = c("I(3) vs I(2)", "I(2) vs I(1)", "I(1) vs I(0)"),
+             tested_on = c(paste0("diff(", s, ", 2)"), paste0("diff(", s, ")"), s),
+             deterministics = c("intercept", "intercept", LEVEL_DET[[s]]),
+             statistic = sapply(ur[[s]], function(o) unname(o$statistic)),
+             p_value   = sapply(ur[[s]], function(o) unname(o$p.value)),
+             row.names = NULL)
+}))
+pantula$reject_5pct <- pantula$p_value < LEVEL
+tab("04_pantula", pantula, digits = 4,
+    caption = "Pantula principle with bootUR::adf: from the second difference down to the level")
 
-# Pantula: s1 = ADF on diff (H0 I(2)), s2 = ADF on level (H0 I(1)), MAIC lags -> ur[[s]]
-# reject = bootstrap p < 5% (p = 0: below 1/1999) -> 04_pantula
-ur <- list()
-pantula <- NULL
-for (s in names(SER)) {
-  a1 <- badf(diff(SER[[s]]), "intercept", "MAIC", label = paste0("diff(", s, ")"))
-  a2 <- lagfit[[s]]$MAIC
-  ur[[s]] <- list(s1 = a1, s2 = a2)
-  pantula <- rbind(pantula, data.frame(
-    series     = s,
-    step       = c("1: I(2) vs I(1)", "2: I(1) vs I(0)"),
-    regression = c(paste0("ADF on diff(", s, "), intercept"), paste0("ADF on ", s, ", ", DET[[s]])),
-    lags_used  = c(lags_used(a1), lags_used(a2)),
-    tau        = unname(c(a1$statistic, a2$statistic)),
-    p_boot     = unname(c(a1$p.value, a2$p.value))))
-}
-pantula$reject_5pct <- pantula$p_boot < 0.05
-write.csv(pantula, "results/tables/04_pantula.csv")
-print(pantula, digits = 3)
+# order = first non-rejection from the top
+# -> integ: series | order | d   (KPSS columns added in section 2)
+integ <- do.call(rbind, lapply(names(SER), function(s) {
+  rej <- pantula$reject_5pct[pantula$series == s]          # steps 1, 2, 3
+  d   <- if (!rej[1]) 3L else if (!rej[2]) 2L else if (!rej[3]) 1L else 0L
+  data.frame(series = s, order = paste0("I(", d, ")"), d = d, row.names = NULL)
+}))
 
-# KPSS on level and diff, lags trunc(4|12 (T/100)^(1/4)); short fits -> ur[[s]]$kp_lvl, $kp_dif
-# p capped to [0.01, 0.10] (its warning muted) -> 04_kpss_bandwidth
-kpss_tab <- NULL
-for (s in names(SER)) for (L in c("short", "long")) {
-  a <- suppressWarnings(kpss.test(SER[[s]],       null = KPSS_NULL[[s]], lshort = L == "short"))
-  b <- suppressWarnings(kpss.test(diff(SER[[s]]), null = "Level",        lshort = L == "short"))
-  a$data.name <- s; b$data.name <- paste0("diff(", s, ")")   # else prints "data: SER[[s]]"
-  kpss_tab <- rbind(kpss_tab, data.frame(
-    series = s, bandwidth = L, lags = unname(a$parameter), level_null = KPSS_NULL[[s]],
-    kpss_level = unname(a$statistic), p_level = a$p.value,
-    kpss_diff  = unname(b$statistic), p_diff  = b$p.value))
-  if (L == "short") { ur[[s]]$kp_lvl <- a; ur[[s]]$kp_dif <- b }
-}
-write.csv(kpss_tab, "results/tables/04_kpss_bandwidth.csv")
-print(kpss_tab, digits = 4)
+## ---- 2. KPSS: the opposite null as a check ---------------------------------
+# KPSS flips the hypotheses (H0 = stationary), so agreement with Pantula means
+# something. Level: trend-stationary (tau) for y, log(y); level-stationary (mu)
+# for r. First difference: level-stationary (mu). Both urca bandwidths, since
+# the bandwidth scales the statistic. KPSS rejects on the RIGHT tail.
+# -> 04_kpss_bandwidth: series | bandwidth | level_type | kpss_level | cv5_level | kpss_diff | cv5_diff
+KPSS_TYPE <- c(y = "tau", "log(y)" = "tau", r = "mu")
+kpss_tab <- do.call(rbind, lapply(names(SER), function(s) do.call(rbind, lapply(c("short", "long"), function(L) {
+  a <- ur.kpss(SER[[s]],       type = KPSS_TYPE[[s]], lags = L)
+  b <- ur.kpss(diff(SER[[s]]), type = "mu",           lags = L)
+  data.frame(series = s, bandwidth = L, level_type = KPSS_TYPE[[s]],
+             kpss_level = as.numeric(a@teststat)[1], cv5_level = a@cval[1, "5pct"],
+             kpss_diff  = as.numeric(b@teststat)[1], cv5_diff  = b@cval[1, "5pct"])
+}))))
+tab("04_kpss_bandwidth", kpss_tab, digits = 4,
+    caption = "KPSS under both urca bandwidth rules, level and first difference, per series")
 
-# all tests, all series; reject = p < 5% -> ur_summary, 04_unitroot_summary
-ur_summary <- NULL
-for (s in names(SER)) {
-  u <- ur[[s]]
-  ur_summary <- rbind(ur_summary, data.frame(
-    series    = s,
-    test      = c(paste0("ADF diff(", s, "), intercept"), paste0("ADF ", s, ", ", DET[[s]]),
-                  paste0("KPSS ", s, " (", KPSS_NULL[[s]], ")"),
-                  paste0("KPSS diff(", s, ") (Level)")),
-    statistic = unname(c(u$s1$statistic, u$s2$statistic, u$kp_lvl$statistic, u$kp_dif$statistic)),
-    p_value   = unname(c(u$s1$p.value, u$s2$p.value, u$kp_lvl$p.value, u$kp_dif$p.value)),
-    null      = c("2 unit roots", "1 unit root",
-                  if (KPSS_NULL[[s]] == "Trend") "trend stationary" else "level stationary",
-                  "difference is level stationary")))
-}
-ur_summary$reject_5pct <- ur_summary$p_value < 0.05
-write.csv(ur_summary, "results/tables/04_unitroot_summary.csv")
-print(ur_summary, digits = 4)
+# does KPSS (short bandwidth) agree with Pantula's order?
+# I(1): rejects stationarity of the level but not of the difference; I(0): doesn't reject the level
+k_short <- kpss_tab[kpss_tab$bandwidth == "short", ]
+integ$kpss_level_rejects <- k_short$kpss_level > k_short$cv5_level
+integ$kpss_diff_rejects  <- k_short$kpss_diff  > k_short$cv5_diff
+integ$kpss_agrees <- ifelse(integ$d == 1L, integ$kpss_level_rejects & !integ$kpss_diff_rejects,
+                            ifelse(integ$d == 0L, !integ$kpss_level_rejects, NA))
+tab("04_integration_order", integ,
+    caption = "Order of integration per series: Pantula (ADF), checked against KPSS")
+# y: KPSS also rejects for diff(y). Not a second unit root: a dollar move is a
+# % move times the price, so the mean of diff(y) grows with the level and
+# KPSS(mu) tests for a constant mean. log(y) removes this -- why we model log(y).
 
-# d from Pantula; does short-bandwidth KPSS agree (NA for I(2)) -> integ, 04_integration_order
-integ <- NULL
-for (s in names(SER)) {
-  p  <- pantula[pantula$series == s, ]
-  k  <- kpss_tab[kpss_tab$series == s & kpss_tab$bandwidth == "short", ]
-  d  <- if (!p$reject_5pct[1]) 2L else if (!p$reject_5pct[2]) 1L else 0L
-  kl <- k$p_level < 0.05; kd <- k$p_diff < 0.05
-  integ <- rbind(integ, data.frame(
-    series = s, pantula_step1_reject = p$reject_5pct[1], pantula_step2_reject = p$reject_5pct[2],
-    order_adf = paste0("I(", d, ")"), kpss_level_rejects = kl, kpss_diff_rejects = kd,
-    kpss_agrees = if (d == 1L) kl && !kd else if (d == 0L) !kl else NA))
-}
-write.csv(integ, "results/tables/04_integration_order.csv")
-print(integ, digits = 4)
+## ---- 3. Deterministic terms (after Pantula) -------------------------------
+# Pantula used deterministics CHOSEN by reasoning. Now that d is known, check them.
 
-saveRDS(mget(c("integ", "maxlag", "ur", "ur_summary")), "results/rds/04_unit_roots.rds")
+# (a) Test them directly on the stationary transform (diff(x) for I(1), x for I(0)).
+# No unit root left there, so ordinary t-tests are valid; HAC (Newey-West) se
+# because volatility clustering makes the iid se too small.
+#   const: I(1) -> the drift of x (mean of diff(x));  I(0) -> the mean of x
+#   trend: does that drift / mean change over time? (time rescaled to (0, 1])
+# log(y) and r give identical rows: diff(log(y)) IS r.
+# Newey-West lag by the standard rule of thumb floor(4 (T/100)^(2/9)) = 10 here.
+# (Checked: lags 0 and 22 give the same verdict, t = 1.37 and 1.65 for the drift.)
+# -> 04_deterministics: series | order | tested_on | const | t_const | p_const |
+#    trend | t_trend | p_trend | sig_const | sig_trend
+HAC_LAG <- floor(4 * (length(rn) / 100)^(2 / 9))
+d_of <- function(s) integ$d[integ$series == s]
+
+det_tab <- do.call(rbind, lapply(names(SER), function(s) {
+  d   <- d_of(s)
+  z   <- if (d >= 1L) diff(SER[[s]], differences = d) else SER[[s]]
+  tt  <- seq_along(z) / length(z)
+  m0  <- lm(z ~ 1)                     # constant only: drift / mean
+  m1  <- lm(z ~ tt)                    # constant + time: trend in it?
+  se0 <- sqrt(diag(NeweyWest(m0, lag = HAC_LAG, prewhite = FALSE, adjust = TRUE)))
+  se1 <- sqrt(diag(NeweyWest(m1, lag = HAC_LAG, prewhite = FALSE, adjust = TRUE)))
+  t0  <- unname(coef(m0)[1] / se0[1])
+  t1  <- unname(coef(m1)[2] / se1[2])
+  data.frame(series = s, order = paste0("I(", d, ")"),
+             tested_on = if (d >= 1L) paste0("diff(", s, ")") else s,
+             const = unname(coef(m0)[1]), t_const = t0, p_const = 2 * pnorm(-abs(t0)),
+             trend = unname(coef(m1)[2]), t_trend = t1, p_trend = 2 * pnorm(-abs(t1)),
+             row.names = NULL)
+}))
+det_tab$sig_const <- stars(det_tab$p_const)
+det_tab$sig_trend <- stars(det_tab$p_trend)
+tab("04_deterministics", det_tab, digits = 5,
+    caption = "Deterministic terms tested on the stationary transform, HAC (Newey-West) t-stats")
+
+# (b) Retest I(1) vs I(0) with the deterministics we now know.
+# Pantula's level test used terms chosen by reasoning (trend for y, log(y)).
+# (a) tells us which terms the data actually support:
+#   I(1): drift significant -> trend, else intercept
+#   I(0): trend significant -> trend, mean significant -> intercept, else none
+# An unneeded term doesn't invalidate ADF but costs power, so redo the last
+# Pantula step (the level, H0: I(1) vs H1: I(0)) with the supported terms and
+# check that the conclusion is the same.
+# -> 04_deterministics_adf: series | det_pantula | p_pantula | det_supported |
+#    stat_supported | p_supported | reject_5pct | same_conclusion
+det_adf <- do.call(rbind, lapply(names(SER), function(s) {
+  k   <- det_tab[det_tab$series == s, ]
+  cs  <- k$p_const < LEVEL; ts <- k$p_trend < LEVEL
+  sup <- if (d_of(s) >= 1L) { if (cs) "trend" else "intercept" } else
+  { if (ts) "trend" else if (cs) "intercept" else "none" }
+  o   <- adf(SER[[s]], deterministics = sup)
+  p0  <- pantula$p_value[pantula$series == s & pantula$step == 3]
+  data.frame(series = s,
+             det_pantula = LEVEL_DET[[s]], p_pantula = p0,
+             det_supported = sup,
+             stat_supported = unname(o$statistic), p_supported = unname(o$p.value),
+             reject_5pct = unname(o$p.value) < LEVEL,
+             same_conclusion = (p0 < LEVEL) == (unname(o$p.value) < LEVEL),
+             row.names = NULL)
+}))
+tab("04_deterministics_adf", det_adf, digits = 4,
+    caption = "Retest of I(1) vs I(0) on the level with the data-supported deterministics")
+
+# -> results/parts/04_unit_roots.rds
+part_save(c("det_adf", "det_tab", "integ", "kpss_tab", "maxlag", "pantula", "ur"))
