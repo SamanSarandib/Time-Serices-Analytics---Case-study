@@ -1,0 +1,2 @@
+"","series","deterministics","criterion","ceiling","lags_used","tau","p_boot","reject_5pct"
+"1","log(RV_m)","intercept","MAIC",16,5,-3.22208153611665,0.0185092546273137,TRUE

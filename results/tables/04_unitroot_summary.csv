@@ -1,16 +1,13 @@
-"","series","test","statistic","cv_5pct","null","reject_5pct"
-"1","y","ADF diff(y), drift (tau2)",-14.8144099705278,-2.86,"2 unit roots",TRUE
-"2","y","ADF y, trend (tau3)",2.02106907578633,-3.41,"1 unit root",FALSE
-"3","y","ADF y, drift (tau2)",4.21497437375561,-2.86,"1 unit root",FALSE
-"4","y","KPSS y (tau)",9.52357447994171,0.146,"trend stationary",TRUE
-"5","y","KPSS diff(y) (mu)",1.08728143860988,0.463,"difference is level stationary",TRUE
-"6","log(y)","ADF diff(log(y)), drift (tau2)",-14.7184039242524,-2.86,"2 unit roots",TRUE
-"7","log(y)","ADF log(y), trend (tau3)",-2.57020754067391,-3.41,"1 unit root",FALSE
-"8","log(y)","ADF log(y), drift (tau2)",0.57773915060611,-2.86,"1 unit root",FALSE
-"9","log(y)","KPSS log(y) (tau)",9.12956891063296,0.146,"trend stationary",TRUE
-"10","log(y)","KPSS diff(log(y)) (mu)",0.216031209294554,0.463,"difference is level stationary",FALSE
-"11","r","ADF diff(r), drift (tau2)",-28.0675147727803,-2.86,"2 unit roots",TRUE
-"12","r","ADF r, trend (tau3)",-14.8082612804824,-3.41,"1 unit root",TRUE
-"13","r","ADF r, drift (tau2)",-14.7184039242524,-2.86,"1 unit root",TRUE
-"14","r","KPSS r (mu)",0.216031209294554,0.463,"level stationary",FALSE
-"15","r","KPSS diff(r) (mu)",0.00120696675483564,0.463,"difference is level stationary",FALSE
+"","series","test","statistic","p_value","null","reject_5pct"
+"1","y","ADF diff(y), intercept",-27.0081134040437,0,"2 unit roots",TRUE
+"2","y","ADF y, trend",1.70742676186842,0.979489744872436,"1 unit root",FALSE
+"3","y","KPSS y (Trend)",9.52357447994171,0.01,"trend stationary",TRUE
+"4","y","KPSS diff(y) (Level)",1.08728143860988,0.01,"difference is level stationary",TRUE
+"5","log(y)","ADF diff(log(y)), intercept",-89.947795754033,0,"2 unit roots",TRUE
+"6","log(y)","ADF log(y), trend",-2.57413720433283,0.375687843921961,"1 unit root",FALSE
+"7","log(y)","KPSS log(y) (Trend)",9.12956891063296,0.01,"trend stationary",TRUE
+"8","log(y)","KPSS diff(log(y)) (Level)",0.216031209294552,0.1,"difference is level stationary",FALSE
+"9","r","ADF diff(r), intercept",-150.918530776262,0,"2 unit roots",TRUE
+"10","r","ADF r, intercept",-89.947795754033,0,"1 unit root",TRUE
+"11","r","KPSS r (Level)",0.216031209294552,0.1,"level stationary",FALSE
+"12","r","KPSS diff(r) (Level)",0.00120696675483552,0.1,"difference is level stationary",FALSE
